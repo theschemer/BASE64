@@ -29,145 +29,289 @@
 ;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (library (base64 base64)
-  (export encode
-          encode-bytevector
-          decode
-          decode-string
-          &invalid-encoding
-          invalid-encoding?
-          invalid-encoding-position
-          &unknown-alphabet
-          unknown-alphabet?
-          unknown-alphabet-char)
-  (import (rnrs))
+    (export 
+        encode
+        encode-url
+        encode-utf8
+        encode-utf8-url
+		    encode-bytevector
+        decode
+        decode-url
+        decode-utf8
+        decode-utf8-url
+        decode-string
+        len-verif
+		    &invalid-encoding
+		    invalid-encoding?
+		    invalid-encoding-position
+		    &unknown-alphabet
+		    unknown-alphabet?
+		    unknown-alphabet-char)
+	(import (scheme))
 
-  (define *table*
-    '#(#\A #\B #\C #\D #\E #\F #\G #\H
-       #\I #\J #\K #\L #\M #\N #\O #\P
-       #\Q #\R #\S #\T #\U #\V #\W #\X
-       #\Y #\Z #\a #\b #\c #\d #\e #\f
-       #\g #\h #\i #\j #\k #\l #\m #\n
-       #\o #\p #\q #\r #\s #\t #\u #\v
-       #\w #\x #\y #\z #\0 #\1 #\2 #\3
-       #\4 #\5 #\6 #\7 #\8 #\9 #\+ #\/))
+	(define *table*
+		'#(#\A #\B #\C #\D #\E #\F #\G #\H
+		   #\I #\J #\K #\L #\M #\N #\O #\P
+		   #\Q #\R #\S #\T #\U #\V #\W #\X
+		   #\Y #\Z #\a #\b #\c #\d #\e #\f
+		   #\g #\h #\i #\j #\k #\l #\m #\n
+		   #\o #\p #\q #\r #\s #\t #\u #\v
+		   #\w #\x #\y #\z #\0 #\1 #\2 #\3
+           #\4 #\5 #\6 #\7 #\8 #\9 #\+ #\/))
+           
+    (define *table-url*
+		'#(#\A #\B #\C #\D #\E #\F #\G #\H
+		   #\I #\J #\K #\L #\M #\N #\O #\P
+		   #\Q #\R #\S #\T #\U #\V #\W #\X
+		   #\Y #\Z #\a #\b #\c #\d #\e #\f
+		   #\g #\h #\i #\j #\k #\l #\m #\n
+		   #\o #\p #\q #\r #\s #\t #\u #\v
+		   #\w #\x #\y #\z #\0 #\1 #\2 #\3
+		   #\4 #\5 #\6 #\7 #\8 #\9 #\- #\_))
 
-  (define (encode iport oport)
+    (define encode
+        (lambda (iport oport)
+            (define put-alphabet
+                (lambda (i)
+			        (put-char oport (vector-ref *table* i))))
+		    (let loop ((b0 (get-u8 iport)) (n 0))
+                (cond 
+                    ((eof-object? b0) n)
+                    (else 
+                        (put-alphabet (fxarithmetic-shift-right b0 2))
+                        (let 
+                            ((p0 (fxarithmetic-shift-left (fxbit-field b0 0 2) 4))
+							(b1 (get-u8 iport)))
+                            (cond 
+                                ((eof-object? b1)
+								    (put-alphabet p0)
+									(put-string oport "==")
+									(+ n 4))
+								(else
+									(put-alphabet (fxior p0 (fxarithmetic-shift-right b1 4)))
+                                        (let                                                 
+                                            ((p1 (fxarithmetic-shift-left (fxbit-field b1 0 4) 2))
+                                            (b2 (get-u8 iport)))
+                                            (cond 
+                                                ((eof-object? b2)
+												    (put-alphabet p1)
+												    (put-char oport #\=)
+												    (+ n 4))
+												(else
+													(put-alphabet (fxior p1 (fxarithmetic-shift-right b2 6)))
+													(put-alphabet (fxbit-field b2 0 6))
+                                                    (loop (get-u8 iport) (+ n 4)))))))))))))
+                                                                
 
-    (define (put-alphabet i)
-      (put-char oport (vector-ref *table* i)))
+    (define encode-url
+        (lambda (iport oport)
+            (define put-alphabet
+                (lambda (i)
+			        (put-char oport (vector-ref *table-url* i))))
+		    (let loop ((b0 (get-u8 iport)) (n 0))
+                (cond 
+                    ((eof-object? b0) n)
+                    (else 
+                        (put-alphabet (fxarithmetic-shift-right b0 2))
+                        (let 
+                            ((p0 (fxarithmetic-shift-left (fxbit-field b0 0 2) 4))
+							(b1 (get-u8 iport)))
+                            (cond 
+                                ((eof-object? b1)
+								    (put-alphabet p0)
+									(+ n 4))
+								(else
+									(put-alphabet (fxior p0 (fxarithmetic-shift-right b1 4)))
+                                        (let                                                 
+                                            ((p1 (fxarithmetic-shift-left (fxbit-field b1 0 4) 2))
+                                            (b2 (get-u8 iport)))
+                                            (cond 
+                                                ((eof-object? b2)
+												    (put-alphabet p1)
+												    (+ n 4))
+												(else
+													(put-alphabet (fxior p1 (fxarithmetic-shift-right b2 6)))
+													(put-alphabet (fxbit-field b2 0 6))
+                                                    (loop (get-u8 iport) (+ n 4)))))))))))))
 
-    (assert (binary-port? iport))
-    (assert (textual-port? oport))
+                                                    
 
-    (let loop ((b0 (get-u8 iport))
-               (n 0))
-      (cond ((eof-object? b0)
-             n)
-            (else
-             (put-alphabet (fxarithmetic-shift-right b0 2))
-             (let ((p0 (fxarithmetic-shift-left (fxbit-field b0 0 2) 4))
-                   (b1 (get-u8 iport)))
-               (cond ((eof-object? b1)
-                      (put-alphabet p0)
-                      (put-string oport "==")
-                      (+ n 4))
-                     (else
-                      (put-alphabet (fxior p0 (fxarithmetic-shift-right b1 4)))
-                      (let ((p1 (fxarithmetic-shift-left (fxbit-field b1 0 4) 2))
-                            (b2 (get-u8 iport)))
-                        (cond ((eof-object? b2)
-                               (put-alphabet p1)
-                               (put-char oport #\=)
-                               (+ n 4))
-                              (else
-                               (put-alphabet (fxior p1 (fxarithmetic-shift-right b2 6)))
-                               (put-alphabet (fxbit-field b2 0 6))
-                               (loop (get-u8 iport) (+ n 4))))))))))))
+	(define (encode-bytevector bv f)
+		(call-with-port (open-bytevector-input-port bv)
+			(lambda (iport)
+				(call-with-string-output-port
+					(lambda (oport)
+                        (f iport oport))))))
 
-  (define (encode-bytevector bv)
-    (assert (bytevector? bv))
-    (call-with-port (open-bytevector-input-port bv)
-      (lambda (iport)
-        (call-with-string-output-port
-         (lambda (oport)
-           (encode iport oport))))))
+    (define encode-utf8
+        (lambda (str)
+            (encode-bytevector (string->bytevector str (make-transcoder (utf-8-codec))) encode)))
 
-  (define-condition-type &invalid-encoding &condition
-    make-invalid-encoding invalid-encoding?
-    (position invalid-encoding-position))
+    (define encode-utf8-url
+        (lambda (str)
+            (encode-bytevector (string->bytevector str (make-transcoder (utf-8-codec))) encode-url)))
 
-  (define-condition-type &unknown-alphabet &condition
-    make-unknown-alphabet unknown-alphabet?
-    (char unknown-alphabet-char))
- 
-  (define (decode iport oport)
+    
 
-    (define (c->i c)
-      (let ((n (char->integer c)))
-        (cond ((<= 65 n 90)   (- n 65))
-              ((<= 97 n 122)  (- n 71)) ; (+ (- n 97) 26)
-              ((<= 48 n 57)   (+ n 4))  ; (+ (- n 48) 52)
-              ((char=? #\+ c) 62)
-              ((char=? #\/ c) 63)
-              (else (raise (make-unknown-alphabet c))))))
+	(define-condition-type &invalid-encoding &condition
+		make-invalid-encoding invalid-encoding?
+		(position invalid-encoding-position))
 
-    (define-syntax put-bytes
-      (syntax-rules ()
-        ((_ c0 c1)
-         (let* ((i0 (c->i c0))
-                (i1 (c->i c1))
-                (b0 (fxior (fxarithmetic-shift-left i0 2)
-                           (fxbit-field i1 4 6))))
-           (put-u8 oport b0)
-           i1))
-        ((_ c0 c1 c2)
-         (let* ((i1 (put-bytes c0 c1))
-                (i2 (c->i c2))
-                (b1 (fxior (fxarithmetic-shift-left (fxbit-field i1 0 4) 4)
-                           (fxbit-field i2 2 6))))
-           (put-u8 oport b1)
-           i2))
-        ((_ c0 c1 c2 c3)
-         (let* ((i2 (put-bytes c0 c1 c2))
-                (b2 (fxior (fxarithmetic-shift-left (fxbit-field i2 0 2) 6)
-                           (c->i c3))))
-           (put-u8 oport b2)))))
 
-    (assert (textual-port? iport))
-    (assert (binary-port? oport))
+	(define-condition-type &unknown-alphabet &condition
+		make-unknown-alphabet unknown-alphabet?
+		(char unknown-alphabet-char))
+    
+        
+    (define decode
+        (lambda (iport oport)
+            (define c->i 
+                (lambda (c)
+			        (let ((n (char->integer c)))
+                        (cond 
+                            ((<= 65 n 90)   (- n 65))
+							((<= 97 n 122)  (- n 71)) ; (+ (- n 97) 26)
+							((<= 48 n 57)   (+ n 4))  ; (+ (- n 48) 52)
+							((char=? #\+ c) 62)
+							((char=? #\/ c) 63)
+							(else (raise (make-unknown-alphabet c)))))))
+		    (define-syntax put-bytes
+			    (syntax-rules ()
+                    ((_ c0 c1) (let* 
+                                    ((i0 (c->i c0))
+								    (i1 (c->i c1))
+								    (b0 (fxior (fxarithmetic-shift-left i0 2)(fxbit-field i1 4 6))))
+                                    (put-u8 oport b0) 
+                                    i1))
+                    ((_ c0 c1 c2) (let* 
+                                    ((i1 (put-bytes c0 c1))
+								    (i2 (c->i c2))
+								    (b1 (fxior (fxarithmetic-shift-left (fxbit-field i1 0 4) 4)
+										(fxbit-field i2 2 6))))
+						            (put-u8 oport b1)
+						            i2))
+                    ((_ c0 c1 c2 c3) (let* 
+                                        ((i2 (put-bytes c0 c1 c2))
+								        (b2 (fxior (fxarithmetic-shift-left (fxbit-field i2 0 2) 6) (c->i c3))))
+						                (put-u8 oport b2)))))
+		    (let loop ((c0 (get-char iport)) (n 0))
+			    (if (eof-object? c0)
+					n
+                    (let 
+                        ((c1 (get-char iport)))
+						(if (eof-object? c1)
+							(raise (make-invalid-encoding (+ n 1))))
+						(let ((c2 (get-char iport)))
+							(if (eof-object? c2)
+								(raise (make-invalid-encoding (+ n 2))))
+							(let ((c3 (get-char iport)))
+                                (cond 
+                                    ((eof-object? c3)
+										(raise (make-invalid-encoding (+ n 3))))
+									((char=? #\= c2)
+                                        (cond 
+                                            ((char=? #\= c3)
+											    (put-bytes c0 c1)
+											    (+ n 1))
+											(else
+												(raise (make-invalid-encoding (+ n 3))))))
+											((char=? #\= c3)
+												(put-bytes c0 c1 c2)
+												(+ n 2))
+											(else
+												(put-bytes c0 c1 c2 c3)
+                                                (loop (get-char iport) (+ n 3)))))))))))
+                                                
 
-    (let loop ((c0 (get-char iport))
-               (n 0))
-      (if (eof-object? c0)
-          n
-          (let ((c1 (get-char iport)))
-            (if (eof-object? c1)
-                (raise (make-invalid-encoding (+ n 1))))
-            (let ((c2 (get-char iport)))
-              (if (eof-object? c2)
-                  (raise (make-invalid-encoding (+ n 2))))
-              (let ((c3 (get-char iport)))
-                (cond ((eof-object? c3)
-                       (raise (make-invalid-encoding (+ n 3))))
-                      ((char=? #\= c2)
-                       (cond ((char=? #\= c3)
-                              (put-bytes c0 c1)
-                              (+ n 1))
-                             (else
-                              (raise (make-invalid-encoding (+ n 3))))))
-                      ((char=? #\= c3)
-                       (put-bytes c0 c1 c2)
-                       (+ n 2))
-                      (else
-                       (put-bytes c0 c1 c2 c3)
-                       (loop (get-char iport) (+ n 3))))))))))
+    (define decode-url
+        (lambda (iport oport)
+            (define c->i 
+                (lambda (c)
+			        (let ((n (char->integer c)))
+                        (cond 
+                            ((<= 65 n 90)   (- n 65))
+							((<= 97 n 122)  (- n 71)) ; (+ (- n 97) 26)
+							((<= 48 n 57)   (+ n 4))  ; (+ (- n 48) 52)
+							((char=? #\- c) 62)
+							((char=? #\_ c) 63)
+							(else (raise (make-unknown-alphabet c)))))))
+		    (define-syntax put-bytes
+			    (syntax-rules ()
+                    ((_ c0 c1) (let* 
+                                    ((i0 (c->i c0))
+								    (i1 (c->i c1))
+								    (b0 (fxior (fxarithmetic-shift-left i0 2)(fxbit-field i1 4 6))))
+                                    (put-u8 oport b0) 
+                                    i1))
+                    ((_ c0 c1 c2) (let* 
+                                    ((i1 (put-bytes c0 c1))
+								    (i2 (c->i c2))
+								    (b1 (fxior (fxarithmetic-shift-left (fxbit-field i1 0 4) 4)
+										(fxbit-field i2 2 6))))
+						            (put-u8 oport b1)
+						            i2))
+                    ((_ c0 c1 c2 c3) (let* 
+                                        ((i2 (put-bytes c0 c1 c2))
+								        (b2 (fxior (fxarithmetic-shift-left (fxbit-field i2 0 2) 6) (c->i c3))))
+						                (put-u8 oport b2)))))
+		    (let loop ((c0 (get-char iport)) (n 0))
+			    (if (eof-object? c0)
+					n
+                    (let 
+                        ((c1 (get-char iport)))
+						(if (eof-object? c1)
+							(raise (make-invalid-encoding (+ n 1))))
+						(let ((c2 (get-char iport)))
+							(if (eof-object? c2)
+								(raise (make-invalid-encoding (+ n 2))))
+							(let ((c3 (get-char iport)))
+                                (cond 
+                                    ((eof-object? c3)
+										(raise (make-invalid-encoding (+ n 3))))
+									((char=? #\= c2)
+                                        (cond 
+                                            ((char=? #\= c3)
+											    (put-bytes c0 c1)
+											    (+ n 1))
+											(else
+												(raise (make-invalid-encoding (+ n 3))))))
+											((char=? #\= c3)
+												(put-bytes c0 c1 c2)
+												(+ n 2))
+											(else
+												(put-bytes c0 c1 c2 c3)
+												(loop (get-char iport) (+ n 3)))))))))))
 
-  (define (decode-string str)
-    (assert (string? str))
-    (call-with-port (open-string-input-port str)
-      (lambda (iport)
-        (call-with-bytevector-output-port
-         (lambda (oport)
-           (decode iport oport))))))
+	(define (decode-string str f)
+		(assert (string? str))
+		(call-with-port (open-string-input-port str)
+			(lambda (iport)
+				(call-with-bytevector-output-port
+					(lambda (oport)
+                        (f iport oport))))))
+
+
+    
+                        
+    (define len-verif
+        (lambda (str)
+            (let ((x (mod (string-length str) 4)))
+                (cond
+                    ((= x 3) (string-append str "="))
+                    ((= x 2) (string-append str "=="))
+                    (else str)))))
+
+
+
+    (define decode-utf8
+        (lambda (str)
+            (bytevector->string (decode-string str decode) (make-transcoder (utf-8-codec)))))
+
+
+    (define decode-utf8-url
+        (lambda (str)
+            (bytevector->string (decode-string (len-verif str) decode-url) (make-transcoder (utf-8-codec)))))
+
+
 
 )
