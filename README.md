@@ -3,11 +3,13 @@
 repackage by theschemer / Raven support team from https://github.com/ovenpasta/thunderchez
 
 
-(import (base64 base64))
+`raven install base64`
 
-    
+
 
 ```
+(import (base64 base64))
+
 (encode-utf8 "STRING") => string
 (decode-utf8 "STRING") => string
 
